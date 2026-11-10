@@ -44,6 +44,22 @@ Other Cricsheet sources work the same way: `t20s` (T20 internationals), `wbb`, `
 [DECISIONS.md](DECISIONS.md) up to the "ten more leagues" section are `--sources ipl hnd`, in
 `reports/hnd+ipl/`.
 
+## Reproduced from a fresh clone
+
+On 2026-11-10 the first commit (`bf44bae`) was cloned into an empty folder, given a new virtual
+environment, installed with `pip install -e ".[dev,model]"`, and run from nothing: the IPL and The
+Hundred archives were downloaded again, the tables rebuilt, and `baseline`, `walkforward` and `rolling`
+re-run with `--sources ipl hnd`.
+
+- The two Cricsheet archives were byte-identical to the originals (same SHA-256).
+- Every value in the three reports matched the originals (maximum difference 0), apart from the
+  ILT20 and LPL rule dates, which only exist when those leagues are loaded.
+- The headline figures reproduced: chase Brier skill 0.470, first-innings skill 0.112.
+- The fast tests passed (101, with the Bayesian module skipped because the `bayes` extra was not installed).
+
+Not covered by that check: the all-league runs (they need ten more downloads), installing the `bayes`
+extra, and the slow Bayesian sampling tests.
+
 ## Tables (`data/processed/*.parquet`)
 
 | Table | Grain | Notes |
