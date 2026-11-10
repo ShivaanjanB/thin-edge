@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "thinedge"
+version = "0.1.0"
+description = "Ball-by-ball T20 win-probability research with calibrated uncertainty"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "pyarrow>=15",
+    "duckdb>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+model = ["matplotlib>=3.8"]
+bayes = ["pymc>=6.4,<7"]
+
+[project.scripts]
+thinedge = "thinedge.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The PyMC sampling tests take about 30 minutes in total, so they are opt-in: pytest -m slow
+addopts = "-q -m 'not slow'"
+markers = ["slow: fits Bayesian models by sampling (about 30 minutes in total); run with -m slow"]
