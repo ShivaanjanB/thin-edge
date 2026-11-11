@@ -46,16 +46,33 @@ def source_clause(sources: list[str] | None) -> str:
     """SQL filter for a list of competitions. Names are validated, not trusted, before inlining."""
     if not sources:
         return ""
+    sources = list(dict.fromkeys(sources))
     for s in sources:
         if not re.fullmatch(r"[a-z0-9_]+", s):
             raise ValueError(f"invalid source name: {s!r}")
     return " and m.source in (" + ", ".join(f"'{s}'" for s in sources) + ")"
 
 
+def check_sources(con, sources: list[str] | None) -> None:
+    """Name any requested competition that was never built, instead of failing later with an
+    unrelated message about an empty split."""
+    if not sources:
+        return
+    source_clause(sources)  # validates the names first
+    loaded = sorted(s for (s,) in con.sql("select distinct source from matches").fetchall())
+    missing = [s for s in dict.fromkeys(sources) if s not in loaded]
+    if missing:
+        raise ValueError(
+            f"no data for source(s) {', '.join(repr(s) for s in missing)}; loaded: {', '.join(loaded) or 'none'}. "
+            "Run `thinedge download` and `thinedge build` first."
+        )
+
+
 def load_frame(con, sources: list[str] | None = None) -> pd.DataFrame:
     """Regulation, full-length, labelled deliveries, using pre-ball columns only.
 
     ``sources`` limits the competitions (``None`` means all loaded)."""
+    check_sources(con, sources)
     df = con.sql(
         f"""
         select s.match_id, s.innings_no, m.source, m.date, m.balls_per_over,

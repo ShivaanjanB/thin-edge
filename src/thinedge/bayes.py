@@ -54,7 +54,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .baseline import match_bootstrap, source_clause
+from .baseline import check_sources, match_bootstrap, source_clause
 from .config import PROCESSED_DIR, REPORTS_DIR
 from .db import connect
 
@@ -73,6 +73,7 @@ GLOBALS = ("a_w", "a_r", "cut", "sigma_bat_w", "sigma_bat_r", "sigma_bowl_w", "s
 
 def load_balls(con, sources: list[str] | None = None) -> pd.DataFrame:
     """Legal deliveries of regulation, full-length matches (reduced and super-over balls excluded)."""
+    check_sources(con, sources)
     return con.sql(
         f"""
         select b.match_id, b.innings_no, b.over_idx, b.in_powerplay, b.batter, b.bowler,

@@ -13,7 +13,7 @@ REPORTS_DIR = Path(os.environ.get("THINEDGE_REPORTS_DIR", ROOT / "reports"))
 
 def reports_dir_for(sources: list[str] | None) -> Path:
     """Reports go to reports/all or reports/<a>+<b>, so runs on different league sets coexist."""
-    return REPORTS_DIR / ("+".join(sorted(sources)) if sources else "all")
+    return REPORTS_DIR / ("+".join(sorted(set(sources))) if sources else "all")
 
 
 CRICSHEET_BASE = "https://cricsheet.org/downloads/"
@@ -22,8 +22,8 @@ CRICSHEET_BASE = "https://cricsheet.org/downloads/"
 BOWLER_WICKET_KINDS = frozenset(
     {"bowled", "caught", "caught and bowled", "lbw", "stumped", "hit wicket"}
 )
-# "retired hurt" appears in Cricsheet's wickets list but the batter has not been dismissed
-# and the team has not lost a wicket.
-NOT_A_DISMISSAL = frozenset({"retired hurt"})
+# "retired hurt" and "retired not out" appear in Cricsheet's wickets list but the batter has not been
+# dismissed and the team has not lost a wicket (the batter may return). "retired out" is a dismissal.
+NOT_A_DISMISSAL = frozenset({"retired hurt", "retired not out"})
 
 TABLES = ("matches", "innings", "balls", "states", "venues")

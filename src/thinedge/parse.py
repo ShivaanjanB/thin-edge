@@ -4,7 +4,13 @@ Conventions
 - ``over_idx`` is Cricsheet's 0-based over number.
 - ``delivery_seq`` counts every delivery in the innings (wides and no-balls included), from 1.
 - A delivery is *legal* unless it is a wide or a no-ball. Byes and leg byes are legal.
-- ``is_wicket`` excludes "retired hurt", which is recorded as a wicket but is not a dismissal.
+- ``is_wicket`` excludes "retired hurt" and "retired not out", which are recorded as wickets but
+  are not dismissals. A delivery can carry more than one wicket (a run out and a "retired out" on the
+  same ball happened once in 5,707 matches): ``n_wickets`` counts every dismissal on it, and the row's
+  ``wicket_kind`` and ``player_out`` describe the first one.
+- Penalty runs are awarded to an innings outside any delivery, either before it starts (``pre``, which
+  the chase target already includes) or after it ends (``post``). They are kept in
+  ``penalty_runs_pre`` and ``penalty_runs_post`` and included in ``total_runs``.
 - Players are keyed by Cricsheet registry id, because names collide ("Mohammed Shami" etc.).
 """
 
@@ -14,6 +20,10 @@ import json
 from pathlib import Path
 
 from .config import BOWLER_WICKET_KINDS, NOT_A_DISMISSAL
+
+
+class NotLimitedOvers(ValueError):
+    """The match has no fixed number of overs (a Test or first-class match), so it is not modelled."""
 
 
 def overs_to_balls(overs: float | int, balls_per_over: int) -> int:
@@ -62,13 +72,15 @@ def _outcome(info: dict) -> dict:
 def parse_match(match_id: int, data: dict, source: str) -> tuple[dict, list[dict], list[dict]]:
     """Parse a decoded Cricsheet JSON document.
 
-    Returns ``(match_row, innings_rows, ball_rows)``. Raises ``ValueError`` for matches that are
+    Returns ``(match_row, innings_rows, ball_rows)``. Raises ``NotLimitedOvers`` for matches that are
     not limited-overs (no ``overs`` in ``info``), because the pipeline models fixed-length formats.
+    Any other problem with the document (a missing field, impossible over notation) is left to
+    propagate, so the caller can report the file instead of mistaking it for a Test match.
     """
     info = data["info"]
     nominal_overs = info.get("overs")
     if nominal_overs is None:
-        raise ValueError(f"match {match_id} has no 'overs' (not a limited-overs match)")
+        raise NotLimitedOvers(f"match {match_id} has no 'overs' (not a limited-overs match)")
     bpo = int(info["balls_per_over"])
     teams = list(info.get("teams", []))
     people = info.get("registry", {}).get("people", {})
@@ -90,6 +102,8 @@ def parse_match(match_id: int, data: dict, source: str) -> tuple[dict, list[dict
         else:
             max_balls = int(nominal_overs) * bpo
         powerplays = [(int(p["from"]), int(p["to"])) for p in inn.get("powerplays", [])]
+        penalty = inn.get("penalty_runs", {})
+        penalty_pre, penalty_post = int(penalty.get("pre", 0)), int(penalty.get("post", 0))
 
         seq = runs = wickets = legal = 0
         for over in inn.get("overs", []):
@@ -100,16 +114,19 @@ def parse_match(match_id: int, data: dict, source: str) -> tuple[dict, list[dict
                 r = d["runs"]
                 extras = d.get("extras", {})
                 is_legal = "wides" not in extras and "noballs" not in extras
-                wicket = (d.get("wickets") or [None])[0]
+                listed = d.get("wickets") or []
+                dismissals = [w for w in listed if w["kind"] not in NOT_A_DISMISSAL]
+                wicket = dismissals[0] if dismissals else (listed[0] if listed else None)
                 kind = wicket["kind"] if wicket else None
-                is_wicket = kind is not None and kind not in NOT_A_DISMISSAL
+                n_wickets = len(dismissals)
+                is_wicket = n_wickets > 0
                 non_boundary = bool(r.get("non_boundary", False))
                 match_replacements = d.get("replacements", {}).get("match", [])
                 impact = any(x.get("reason") == "impact_player" for x in match_replacements)
                 impact_subs += sum(x.get("reason") == "impact_player" for x in match_replacements)
 
                 runs += r["total"]
-                wickets += is_wicket
+                wickets += n_wickets
                 legal += is_legal
                 ball_rows.append(
                     {
@@ -138,6 +155,7 @@ def parse_match(match_id: int, data: dict, source: str) -> tuple[dict, list[dict
                         "is_six": r["batter"] == 6 and not non_boundary,
                         "wicket_kind": kind,
                         "is_wicket": is_wicket,
+                        "n_wickets": n_wickets,
                         "is_bowler_wicket": kind in BOWLER_WICKET_KINDS,
                         "player_out": wicket["player_out"] if wicket else None,
                         "player_out_id": people.get(wicket["player_out"]) if wicket else None,
@@ -155,7 +173,9 @@ def parse_match(match_id: int, data: dict, source: str) -> tuple[dict, list[dict
                 "bowling_team": opponents[0] if len(opponents) == 1 else None,
                 "target_runs": target["runs"] if target else None,
                 "max_balls": max_balls,
-                "total_runs": runs,
+                "penalty_runs_pre": penalty_pre,
+                "penalty_runs_post": penalty_post,
+                "total_runs": runs + penalty_pre + penalty_post,
                 "wickets_lost": wickets,
                 "legal_balls": legal,
                 "has_miscounted_overs": "miscounted_overs" in inn,

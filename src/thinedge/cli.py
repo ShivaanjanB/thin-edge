@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from .build import build
@@ -23,7 +24,10 @@ def _build(args: argparse.Namespace) -> int:
     print(f"matches {report['n_matches']}, innings {report['n_innings']}, balls {report['n_balls']}, "
           f"states {report['n_states']}")
     print(f"skipped: {report['skipped_not_limited_overs']} not limited-overs, "
-          f"{report['skipped_duplicate_match_ids']} duplicate ids")
+          f"{report['skipped_duplicate_match_ids']} duplicate ids, "
+          f"{len(report['malformed_files'])} malformed, {len(report['ignored_files'])} ignored")
+    for bad in report["malformed_files"][:10]:
+        print(f"  [error] malformed file {bad['file']}: {bad['error']}", file=sys.stderr)
     for name, check in report["checks"].items():
         if check["count"]:
             print(f"  [{check['severity']}] {name}: {check['count']}")
@@ -79,11 +83,16 @@ def _walkforward(args: argparse.Namespace) -> int:
     print(f"test years {r['test_years']}, {r['n_test_matches']} matches; "
           f"first-year difference between arms: {r['first_year_max_abs_difference_between_arms']:.1e}")
     print(f"{'IPL, years after the first':<28} {'first-inn gap':>13} {'brier':>7}   {'chase gap':>10} {'brier':>7}")
+    shown = 0
     for arm in ("fixed", "par_oracle", "par_refresh", "full_retrain"):
         s = r["arms"][arm].get("ipl_refreshable", {})
         if s:
             fi, ch = s["first_innings"], s["chase"]
             print(f"{arm:<28} {fi['gap']:+13.3f} {fi['brier']:7.4f}   {ch['gap']:+10.3f} {ch['brier']:7.4f}")
+            shown += 1
+    if not shown:
+        print("note: no IPL matches after the first test year in these sources, so the cause test and "
+              "recovery comparison are empty; include ipl to run them")
     cause = r["verdict"]["cause_test"]["first_innings"]
     if cause:
         lo, hi = cause["brier_gain_ci"]
@@ -144,7 +153,7 @@ def _rolling(args: argparse.Namespace) -> int:
         else:
             verdict = "NOT supported"
         lo, hi = c["ci_lower_across_5_seeds"]
-        print(f"\nPRE-REGISTERED H1 on {c['n_fresh_matches']} fresh matches: no_flag/window2 minus no_flag/expanding Brier gain "
+        print(f"\nH1 (fixed before the real run) on {c['n_fresh_matches']} fresh matches: no_flag/window2 minus no_flag/expanding Brier gain "
               f"{c['brier_gain']:+.5f} [{c['ci'][0]:+.5f}, {c['ci'][1]:+.5f}] -> {verdict}")
         print(f"  lower bound across 5 bootstrap seeds: {lo:+.5f} to {hi:+.5f}")
     for key, g in fe["chosen_paired"].items():
@@ -187,6 +196,16 @@ def _bayes(args: argparse.Namespace) -> int:
     return 0
 
 
+def positive_int(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError:
+        value = 0
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a positive whole number")
+    return value
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="thinedge")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -222,15 +241,24 @@ def main(argv: list[str] | None = None) -> int:
     by = sub.add_parser("bayes", help="fit hierarchical ball-outcome models and score them on held-out balls")
     by.add_argument("--sources", nargs="+", help="competitions to use (default: ipl)")
     by.add_argument("--train-end", default="2024-01-01")
-    by.add_argument("--min-balls", type=int, default=60, help="players with fewer training balls share one level")
-    by.add_argument("--draws", type=int, default=500)
-    by.add_argument("--tune", type=int, default=500)
-    by.add_argument("--chains", type=int, default=4)
-    by.add_argument("--cores", type=int, default=4)
+    by.add_argument("--min-balls", type=positive_int, default=60,
+                    help="players with fewer training balls share one level")
+    by.add_argument("--draws", type=positive_int, default=500)
+    by.add_argument("--tune", type=positive_int, default=500)
+    by.add_argument("--chains", type=positive_int, default=4)
+    by.add_argument("--cores", type=positive_int, default=4)
     by.set_defaults(func=_bayes)
 
     args = parser.parse_args(argv)
-    return args.func(args)
+    if getattr(args, "sources", None):
+        args.sources = list(dict.fromkeys(args.sources))  # a repeated name means the same competition
+    try:
+        return args.func(args)
+    except (ValueError, FileNotFoundError) as exc:
+        if os.environ.get("THINEDGE_DEBUG"):
+            raise
+        print(f"thinedge: error: {exc}\n(set THINEDGE_DEBUG=1 to see the traceback)", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

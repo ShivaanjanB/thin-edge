@@ -14,7 +14,7 @@ import pandas as pd
 
 from .config import PROCESSED_DIR, RAW_DIR
 from .features import build_state_table
-from .parse import parse_file
+from .parse import NotLimitedOvers, parse_file
 from .validate import quality_report
 
 
@@ -24,15 +24,22 @@ def _write_parquet(df: pd.DataFrame, path: Path) -> None:
     os.replace(tmp, path)
 
 
-def discover(raw_dir: Path, sources: list[str] | None) -> list[tuple[str, Path]]:
-    names = sources or sorted(p.name for p in raw_dir.iterdir() if p.is_dir())
+def discover(
+    raw_dir: Path, sources: list[str] | None
+) -> tuple[list[tuple[str, Path]], list[str]]:
+    """Match files (named ``<match id>.json``) per source, and any other ``.json`` files found, which
+    are ignored rather than allowed to abort the build."""
+    names = list(dict.fromkeys(sources or sorted(p.name for p in raw_dir.iterdir() if p.is_dir())))
     found: list[tuple[str, Path]] = []
+    ignored: list[str] = []
     for name in names:
         folder = raw_dir / name
         if not folder.is_dir():
             raise FileNotFoundError(f"no raw data for source {name!r} in {raw_dir}")
-        found += [(name, f) for f in sorted(folder.glob("*.json"), key=lambda p: int(p.stem))]
-    return found
+        files = sorted(folder.glob("*.json"))
+        found += [(name, f) for f in sorted((f for f in files if f.stem.isdecimal()), key=lambda p: int(p.stem))]
+        ignored += [f"{name}/{f.name}" for f in files if not f.stem.isdecimal()]
+    return found, ignored
 
 
 def build(
@@ -45,16 +52,23 @@ def build(
     matches, innings, balls = [], [], []
     seen: set[int] = set()
     skipped_not_limited_overs = skipped_duplicates = 0
+    malformed: list[dict] = []
+    files, ignored = discover(raw_dir, sources)
 
-    for source, path in discover(raw_dir, sources):
+    for source, path in files:
         match_id = int(path.stem)
         if match_id in seen:  # the same match can appear in several Cricsheet archives
             skipped_duplicates += 1
             continue
         try:
             m, i, b = parse_file(path, source)
-        except ValueError:
+        except NotLimitedOvers:
             skipped_not_limited_overs += 1
+            continue
+        except (ValueError, KeyError, TypeError, IndexError, AttributeError) as exc:
+            # A truncated download or an unexpected field. Name the file; do not drop it silently
+            # (JSONDecodeError is a ValueError) and do not let one bad file abort the whole build.
+            malformed.append({"file": f"{source}/{path.name}", "error": f"{type(exc).__name__}: {exc}"})
             continue
         seen.add(match_id)
         matches.append(m)
@@ -88,6 +102,11 @@ def build(
     report = quality_report(matches_df, innings_df, balls_df)
     report["skipped_not_limited_overs"] = skipped_not_limited_overs
     report["skipped_duplicate_match_ids"] = skipped_duplicates
+    report["malformed_files"] = malformed
+    report["ignored_files"] = ignored
+    if malformed:
+        report["errors"]["malformed_files"] = len(malformed)
+        report["ok"] = False
     report["n_states"] = int(len(states_df))
 
     for name, frame in {

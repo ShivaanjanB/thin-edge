@@ -28,6 +28,7 @@ _MEMBER_RE = re.compile(r"^[A-Za-z0-9_\-]+\.json$")
 
 MAX_ZIP_BYTES = 500 * 1024 * 1024
 MAX_MEMBER_BYTES = 10 * 1024 * 1024
+MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024  # the largest archive here is about 100 MB unpacked
 MAX_MEMBERS = 50_000
 USER_AGENT = "thinedge-research/0.1 (cricket data research; cached single download)"
 
@@ -63,9 +64,15 @@ def extract_json_members(zip_path: Path, dest: Path) -> int:
         infos = zf.infolist()
         if len(infos) > MAX_MEMBERS:
             raise ValueError(f"archive has {len(infos)} members (limit {MAX_MEMBERS})")
-        for info in infos:
-            if info.is_dir() or not _MEMBER_RE.fullmatch(info.filename):
-                continue  # README.txt, nested paths, odd names: ignored
+        wanted = [i for i in infos if not i.is_dir() and _MEMBER_RE.fullmatch(i.filename)]
+        # README.txt, nested paths and odd names are ignored. Of the rest:
+        total = sum(i.file_size for i in wanted)
+        if total > MAX_TOTAL_BYTES:  # many small-looking members can still add up (a zip bomb)
+            raise ValueError(f"archive would extract to {total} bytes (limit {MAX_TOTAL_BYTES})")
+        lower = [i.filename.lower() for i in wanted]
+        if len(set(lower)) != len(lower):  # on Windows and macOS the second would overwrite the first
+            raise ValueError("archive has member names that differ only in letter case")
+        for info in wanted:
             if info.file_size > MAX_MEMBER_BYTES:
                 raise ValueError(f"{info.filename} is {info.file_size} bytes (limit {MAX_MEMBER_BYTES})")
             (dest / info.filename).write_bytes(zf.read(info))

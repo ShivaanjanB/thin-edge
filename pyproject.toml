@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "hypothesis>=6.100"]
 model = ["matplotlib>=3.8"]
 bayes = ["pymc>=6.4,<7"]
 

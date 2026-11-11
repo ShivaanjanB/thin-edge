@@ -239,7 +239,7 @@ def analyse(
         g = paired_vs_base["fresh"][H1_CANDIDATE]
         fm = subsets["fresh"]
         # The interval comes from a bootstrap, so a lower bound that sits near zero can change sign
-        # with the random seed. `supported` is the single pre-registered comparison; `robust` asks
+        # with the random seed. `supported` is the single comparison fixed before the real run; `robust` asks
         # that the lower bound stay above zero for every one of several seeds.
         lowers = [
             paired_brier_gain(test[fm], test.loc[fm, H1_CANDIDATE], test.loc[fm, BASE_CANDIDATE], n_boot, seed=s)["ci"][0]

@@ -1,13 +1,39 @@
 # Thin Edge
 
-Ball-by-ball T20 win probability with honest uncertainty, built to be fast enough to reprice every
-delivery and checked for calibration rather than just accuracy.
+For every ball of a T20 match, Thin Edge estimates the chance that the batting side wins, using only
+what is known before that ball, and checks whether those chances can be trusted (when it says 70%,
+does that happen about 70% of the time?).
 
 *A thin edge* is both a small betting advantage and a faint nick off the bat.
 
-**Status: data layer, logistic baseline and a walk-forward test are done.** The baseline explains
-the chase well (Brier skill 0.47 over a constant reference) but is poorly calibrated in the first
-innings and in the newest IPL seasons. A walk-forward test found that a stale par curve explains only
+## In short
+
+- **What works.** In the chase, on 399 IPL and Hundred matches from 2024 to 2026 that the model never
+  saw, its error is 47% lower than a forecast that only knows the long-run win rate (Brier 0.132 against
+  0.249).
+- **What does not.** The first innings is poorly calibrated: in the IPL test matches the side batting
+  first was given a 59% chance on average and won 45% of the time. Most of that traces to a rule-change flag learned from
+  just 71 matches ([DECISIONS.md](DECISIONS.md), walk-forward section).
+- **The yardstick is modest.** The only comparison so far is that constant win rate. It has not been
+  compared with a par-score or Duckworth-Lewis-style rule, or with betting markets; that is the next step.
+- **Player model: inconclusive.** A Bayesian model of individual batters and bowlers has had one short
+  run on real IPL data. It did not pass the convergence rule set in advance. Taken at face value, the
+  player ratings predicted 2024+ matches slightly *worse* than a model with no players.
+- **How it was checked.** Confidence intervals resample whole matches. Decision rules were written into
+  the code before each real run; there is no outside proof of that, as the git history starts on
+  10 Nov 2026. Parsed scores are cross-checked against the win margins Cricsheet records, which found
+  and fixed three parsing bugs.
+- **Built with Claude Code** (an AI coding agent). [DECISIONS.md](DECISIONS.md) records each decision
+  and each place the AI was wrong.
+
+*Terms.* **Brier score**: the average squared gap between a forecast probability and what happened
+(0 is perfect; always saying 50% scores 0.25). **Skill**: the share of the reference forecast's error
+that the model removes (0.47 here). **Chase**: the second innings, when the target is known.
+
+## Findings in more detail
+
+The baseline explains the chase well (Brier skill 0.47 over a constant reference) but is poorly
+calibrated in the first innings and in the newest IPL seasons. A walk-forward test found that a stale par curve explains only
 about a third of that; most of it came from a regime flag fitted on 71 matches. A rolling-origin
 evaluation showed that seasons before 2024 cannot choose a drift strategy (they contain no drift to
 adapt to), while in 2024-26 a short training memory or a yearly-retrained flag both help the IPL. Ten
@@ -15,9 +41,12 @@ more leagues (12 competitions, 5,707 matches) were then added to test that on co
 examined: the direction repeats but the effect is a fifth the size, uneven across leagues, and not robust.
 Drift handling is not the main lever; team and player strength is the next one.
 
-**Not yet done:** a hierarchical Bayesian ball-outcome model (PyMC, `src/thinedge/bayes.py`) is written
-and passes its tests on *simulated* matches, but it has **not been run on the real data**. There is no
-link from it to match win probability yet. See [DECISIONS.md](DECISIONS.md).
+The hierarchical Bayesian ball-outcome model (PyMC, `src/thinedge/bayes.py`) passes its tests on
+simulated matches. One short run on real IPL data (995 training matches, tested on 214 from 2024 on;
+about 6.7 hours on a laptop) **failed the convergence rule**, so the result is inconclusive. Read
+informally, adding batter and bowler effects made held-out predictions of runs worse, not better
+(`reports/ipl/bayes.json`; DECISIONS.md, player-model section). The model is not yet linked to match
+win probability.
 
 ## Quickstart
 
@@ -29,12 +58,12 @@ python -m venv .venv
 .venv/Scripts/python -m thinedge baseline               # fit, evaluate, write reports/all/
 .venv/Scripts/python -m thinedge walkforward            # test whether yearly retraining fixes the drift
 .venv/Scripts/python -m thinedge rolling                # choose a drift strategy on pre-2024 seasons only
-.venv/Scripts/python -m pytest                          # fast tests, about a minute
+.venv/Scripts/python -m pytest                          # fast tests incl. property tests, about a minute
 .venv/Scripts/python -m pytest -m slow                  # Bayesian sampling tests, about 30 minutes
 ```
 
 The Bayesian model needs `pip install -e ".[bayes]"` and is run with `python -m thinedge bayes`
-(it has not been run on the real data; see above).
+(one short IPL run so far; it did not converge, see above).
 
 Other Cricsheet sources work the same way: `t20s` (T20 internationals), `wbb`, `wpl`...
 (the name is the file stem on https://cricsheet.org/downloads/).
@@ -59,6 +88,12 @@ re-run with `--sources ipl hnd`.
 
 Not covered by that check: the all-league runs (they need ten more downloads), installing the `bayes`
 extra, and the slow Bayesian sampling tests.
+
+That check compared the code with itself. A later testing round (property tests and exploratory
+sessions, see [DECISIONS.md](DECISIONS.md)) compared it with Cricsheet's own recorded win margins and
+found three parsing bugs in 10 matches (penalty runs, a double wicket, "retired not out"), none in the
+IPL or The Hundred. They are fixed; the IPL-and-Hundred numbers above are unchanged and the all-league
+report moved by at most 0.00016. A fresh clone built before that round will differ in those matches.
 
 ## Tables (`data/processed/*.parquet`)
 

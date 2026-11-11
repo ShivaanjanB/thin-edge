@@ -351,9 +351,9 @@ The tables now hold 5,707 matches, 11,416 innings and 1,315,435 deliveries acros
   their own estimates, and the plot crashed on it. The model now raises an error naming the offending
   column on any non-finite input, and the all-league runs are launched with numeric warnings turned
   into errors.
-- Four matches (three T20 Blast, one BBL) have a chase target that is not first innings + 1. They look
-  like rain revisions or penalty runs; the target recorded is the real one, so they are left in and stay
-  as warnings.
+- Four matches (three T20 Blast, one BBL) had a chase target that is not first innings + 1. I guessed
+  "rain revisions or penalty runs" and left them as warnings. The testing round below showed they are
+  penalty runs, which the parser was ignoring; that is fixed and the warning now reads zero.
 
 ### Reproducibility
 
@@ -366,14 +366,17 @@ runs go to `reports/all/`.
 ### Results with all twelve competitions
 
 `python -m thinedge rolling` (numbers in `reports/all/rolling.json`, plot `reports/all/rolling.png`).
+These numbers were regenerated after the parser fixes in the testing section below. They moved by at
+most 0.00016 (a validation-year Brier); every conclusion is unchanged. The IPL-and-Hundred reports did
+not move at all.
 Validation 2015-2023 is 2,706 matches (up from 653). The test years 2024-26 hold 1,252 matches: 399
 examined (IPL and The Hundred) and 853 fresh. The models now pool all competitions (shared coefficients,
 a par curve per competition), so absolute numbers are **not comparable** with the IPL-and-Hundred-only
 sections above.
 
-**Validation still could not choose.** Pooled Brier: no_flag/expanding 0.18159 (best); window5 +0.00018
-(-0.00017 to +0.00050); window3 +0.00038 (-0.00027 to +0.00101); window2 +0.00007 (-0.00070 to +0.00085);
-the flag model identical to no-flag (difference 3e-15, as before). By the rule the choice is again
+**Validation still could not choose.** Pooled Brier: no_flag/expanding 0.18161 (best); window5 +0.00018
+(-0.00017 to +0.00050); window3 +0.00038 (-0.00027 to +0.00101); window2 +0.00008 (-0.00070 to +0.00085);
+the flag model identical to no-flag (difference 2e-9, the solver's tolerance, as before). By the rule the choice is again
 no_flag/expanding. Four times as many validation matches changed nothing: before 2024 there is no drift
 for these strategies to exploit.
 
@@ -381,30 +384,30 @@ for these strategies to exploit.
 
 | Candidate | Examined (399 matches) | Fresh (853 matches) |
 |---|---|---|
-| no_flag/expanding | 0.18163 | 0.17701 |
-| no_flag/window5 | 0.17770 (+0.00393, +0.00279 to +0.00520) | 0.17593 (+0.00107, +0.00057 to +0.00162) |
-| no_flag/window3 | 0.17525 (+0.00638, +0.00346 to +0.00957) | 0.17537 (+0.00164, +0.00044 to +0.00295) |
-| no_flag/window2 | 0.17270 (+0.00894, +0.00515 to +0.01328) | 0.17516 (+0.00185, +0.00009 to +0.00360) |
-| flag/expanding | 0.17058 (+0.01105, +0.00700 to +0.01522) | 0.17713 (-0.00013, -0.00074 to +0.00046) |
+| no_flag/expanding | 0.18164 | 0.17701 |
+| no_flag/window5 | 0.17771 (+0.00393, +0.00278 to +0.00520) | 0.17593 (+0.00107, +0.00057 to +0.00162) |
+| no_flag/window3 | 0.17525 (+0.00639, +0.00346 to +0.00957) | 0.17537 (+0.00164, +0.00043 to +0.00295) |
+| no_flag/window2 | 0.17270 (+0.00894, +0.00515 to +0.01328) | 0.17516 (+0.00185, +0.00010 to +0.00360) |
+| flag/expanding | 0.17058 (+0.01106, +0.00701 to +0.01523) | 0.17714 (-0.00013, -0.00074 to +0.00046) |
 | fixed baseline (trained once) | 0.17654 (+0.00509, +0.00330 to +0.00726) | 0.17785 (-0.00084, -0.00148 to -0.00021) |
 
-**H1 (pre-registered): not reliably confirmed.** On the fresh matches no_flag/window2 beats
-no_flag/expanding by +0.00185 Brier (95% CI +0.00009 to +0.00360). The rule as coded printed "SUPPORTED",
+**H1 (fixed in the code before the real run): not reliably confirmed.** On the fresh matches no_flag/window2 beats
+no_flag/expanding by +0.00185 Brier (95% CI +0.00010 to +0.00360). The rule as coded printed "SUPPORTED",
 but that is a knife-edge: across five bootstrap seeds the interval's lower bound ranges from -0.00004 to
-+0.00014 at 1,000 draws, and sits at zero (-0.00000 to +0.00001) at 10,000. The verdict flips with the
-seed, so I do not count it as confirmation. This was a gap in my protocol: I had fixed the comparison but
++0.00014 at 1,000 draws, and sat at zero (-0.00000 to +0.00001) at 10,000 (that last check was made before
+the parser fixes and not repeated). The verdict flips with the seed, so I do not count it as confirmation. This was a gap in my protocol: I had fixed the comparison but
 not the number of bootstrap draws or seeds. The code now also reports whether the lower bound stays above
 zero for all five seeds (`robust`), which says no here. The effect is about 1% of the Brier score.
 
 **Post-hoc detail (fresh matches, window2 minus expanding; exploratory):**
 
-- By competition: PSL +0.0099 (105 matches, CI +0.0030 to +0.0164) is the only one clearly above zero.
+- By competition (recomputed after the parser fixes; the point estimates are unchanged): PSL +0.0099 (105 matches, CI +0.0032 to +0.0164) is the only one clearly above zero.
   CPL +0.0046, BBL +0.0041 and ILT20 +0.0040 have intervals that include zero. BPL +0.0005. The T20 Blast,
   the largest fresh league (228 matches), shows nothing (-0.0002). SA20 -0.0034, MLC -0.0029 and LPL -0.0067
   are negative, and those three have the shortest histories.
 - By year: 2024 -0.0001 (280 matches), 2025 +0.0024 (368), 2026 +0.0035 (205); none is individually
   distinguishable from zero. As in the IPL, any gain is recent.
-- Without the T20 Blast the gain is +0.00258 (625 matches, CI +0.00024 to +0.00493). This is post hoc and
+- Without the T20 Blast the gain is +0.0026 (625 matches, CI +0.0002 to +0.0047). This is post hoc and
   should not be read as a finding.
 
 **Reading it:**
@@ -430,6 +433,141 @@ to matter mostly for the IPL.
 carry over. 853 matches is modest and per-league intervals are wide. The fresh set is now **spent**: it has
 been scored and examined, so it cannot serve as a clean holdout again. A new one needs later data (2027) or
 other competitions (women's leagues, T20 internationals).
+
+## 2026-11-10: property-based and exploratory testing
+
+Two methods, applied to the finished pipeline: property-based tests (Hypothesis) and charter-based
+exploratory sessions against the real data and the command line. The exploratory sessions were informal
+and not timed to the usual 45 to 90 minutes; each was a few minutes of scripted probing, and the notes
+below are the log.
+
+### Property-based tests (`tests/test_properties.py`, 15 properties)
+
+A generator builds random but internally consistent matches in Cricsheet's shape (5- and 6-ball overs,
+extras, retired batters, double wickets, penalty runs, no-result and tied matches). The properties:
+
+- parsed tables add up to the raw JSON (totals, legal balls, wickets) and ball sequence numbers run 1..n;
+- the state table is consistent ball to ball (a ball starts where the last one ended), time only runs
+  forward, and shuffling the input rows changes nothing;
+- the label is the same fact seen from both sides, and absent when there is no winner;
+- the parsed scores reproduce the "won by N runs / N wickets" margin the source records;
+- over notation round-trips for any ball count;
+- the logistic fit is unchanged by rescaling, shifting or sign-flipping a feature, row order, and swapping
+  the labels swaps the probabilities (and mean prediction equals the base rate);
+- the bootstrap is reproducible and resamples whole matches, the paired gain is antisymmetric, and
+  calibration bins partition the data.
+
+**Do they test anything?** I planted bugs and checked that a property fails. The first nine plants: seven
+were caught. The other two (a no-op `np.minimum` in the calibration bins and a reordering that does not
+change the bootstrap distribution) turned out to be equivalent code, not missed bugs. A second set of six
+plants, each reintroducing a defect found below, was caught by six of six. One weakness: the
+"whole matches" bootstrap property only checks counts and bounds, so a subtle row-level resample could
+slip past it.
+
+### Exploratory sessions and findings
+
+| Charter | Resources | What it found |
+|---|---|---|
+| Explore the parser's assumptions with all 5,707 real raw files | wicket kinds, wickets per delivery, extras, innings keys | double-wicket deliveries, an unhandled wicket kind, an unhandled innings key |
+| Explore the parsed tables with Cricsheet's own recorded margins as the oracle | win by N wickets (2,813 matches), win by N runs | 2 wicket mismatches and 5 run mismatches, explained below |
+| Explore the command line with bad arguments and boundary dates | unknown and repeated sources, bad dates, empty splits, zero options | six issues (F6) |
+| Explore the build with corrupt and odd raw files | truncated, empty and binary files, missing fields, stray names | three issues (F4, F5) |
+| Explore archive extraction with hostile members | case collisions, device names, many small members | two hardening gaps (F7) |
+
+| # | Finding | Severity | Status |
+|---|---|---|---|
+| F1 | Innings-level `penalty_runs` (7 innings) were ignored. Totals were short by the penalty; in the 2 chases awarded penalty runs *before* the innings, runs needed was overstated for the whole chase. This is also why 4 matches failed the "target = first innings + 1" check, which I had guessed was rain. | data, small | fixed |
+| F2 | Only the first wicket on a delivery was read. One match (BPL 1208093) has a run out and a "retired out" on the same ball, so its chase showed 7 wickets lost instead of 8. | data, small | fixed |
+| F3 | "retired not out" counted as a dismissal (it means the batter may return), in 2 innings (T20 Blast 1250237, CPL 1369575). | data, small | fixed |
+| F4 | A truncated, empty or corrupt JSON file, or invalid over notation, was counted as "not limited-overs" and the build reported `ok`. A missing field aborted the whole build without naming the file. | robustness, medium | fixed: files named, `ok` false |
+| F5 | One stray non-numeric `.json` name crashed the build. | robustness, low | fixed: ignored and listed |
+| F6 | An unknown source gave "train_end leaves an empty split" (blaming the date); expected errors printed raw tracebacks; `walkforward --first-test-year 1900` died with "cannot convert float NaN to integer"; `--sources ipl ipl` made a folder `ipl+ipl`; `walkforward --sources hnd` exited 0 with an empty analysis; `bayes --chains 0` crashed inside PyMC and `--draws 0` started a fit. | usability, low | fixed |
+| F7 | Member names differing only in case overwrote each other (and the count overstated), and the total uncompressed size of an archive was uncapped. | hardening, low | fixed |
+
+Not reproduced: Windows device names such as `NUL.json` extracted as ordinary files here. Rejected
+correctly all along: `--sources ../x`, `download ../evil`, a Test match, an empty innings list.
+
+### Effect on the real data
+
+The rebuild changed 10 innings in 10 matches (369 state rows in 5 matches), all in the T20 Blast, BBL, BPL
+and CPL; none is in the IPL or The Hundred. Every cross-check now reads zero: wins by wickets (2,813
+matches) and by runs agree with the recorded margin, no innings has more than 10 wickets, and the
+"target = first innings + 1" warning is gone. The IPL-and-Hundred reports re-ran identically (maximum
+difference 0 across 2,352 values). The all-league rolling report moved by at most 0.00016, no conclusion
+changed, and it was regenerated and recommitted. The margin check is now permanent in the quality report
+(`win_by_wickets_mismatch`, `win_by_runs_mismatch`, `more_than_ten_wickets`).
+
+### Not covered
+
+Plots, the Bayesian model on real data (run later; see the next section), network failures in the downloader, and
+anything needing more than a few hundred generated examples per property (each ran 60 to 100 examples
+under three fixed seeds). The oracle only checks matches decided by a margin and not rain-affected, so a
+tie, no-result or D/L match with bad scoring would not show up there.
+
+## 2026-11-11: first run of the player model on real IPL data
+
+Command: `thinedge bayes --sources ipl --draws 200 --tune 200 --chains 2` (seed 1). Training is IPL
+before 2024 (995 matches, 230,309 balls); the test is 2024 on (214 matches, 48,515 balls). Players with
+at least 60 balls are modelled individually: 342 batters and 355 bowlers. Everyone else shares one
+"other" rating, which covers 23% of test balls for the batter and 21% for the bowler. 72 balls with an
+odd run value were dropped. Each fit took about two hours; the three took 6.7 hours together.
+
+### Convergence: every fit failed the gate, so the run is not interpretable
+
+The gate was set in `bayes.py` before the run: R-hat at most 1.01 and bulk ESS at least 400 for the
+global parameters, R-hat at most 1.02 for all parameters, and divergences at most 0.1% of draws.
+
+| Model | Max R-hat (global / all) | Min bulk ESS | Divergences |
+|---|---|---|---|
+| M0 (no players) | 1.017 / 1.017 | 64 | 0 |
+| M_bat (batters) | 1.040 / 1.065 | 72 | 0 |
+| M_full (batters and bowlers) | 1.034 / 1.090 | 71 | 0 |
+
+There were no divergences, which points to a run that was too short rather than a broken model.
+**The run could hardly have passed:** 2 chains of 200 kept draws give 400 draws, and an ESS of 400
+would need almost uncorrelated samples. The settings were chosen to keep a laptop run under a day, and
+that choice was not checked against the gate beforehand. A run that can pass needs roughly 4 chains of
+1,000 draws, which is about ten times the work here and more than a day on this laptop. It has not been
+done.
+
+### What the numbers show, read informally
+
+Mean held-out log score per ball (higher is better):
+
+| Model | Total | Wicket part | Runs part |
+|---|---|---|---|
+| M0 | **-1.5425** | -0.2037 | **-1.4130** |
+| M_bat | -1.5602 | -0.2038 | -1.4317 |
+| M_full | -1.5558 | -0.2037 | -1.4271 |
+
+The match-level bootstrap gives:
+- M_full minus M0: -0.0133 (95% CI -0.0167 to -0.0101).
+- M_bat minus M0: -0.0178 (CI -0.0213 to -0.0143).
+- M_full minus M_bat: +0.0045 (CI +0.0033 to +0.0056), robust across all 5 seeds.
+
+So, if these fits are taken at face value:
+- **Player ratings made predictions worse on 2024+ matches.** All of the loss is in predicting runs; the
+  wicket part does not change.
+- Adding bowlers to batters recovers about a quarter of what the batter effects lost.
+
+### Possible reasons (not tested)
+
+- **Sampling.** The fits did not converge, and the player effects are where R-hat is worst.
+- **Drift.** IPL scoring rose sharply from 2023 (the Impact Player rule). Player ratings learned from
+  2008-2023 career data may describe players as they were, not as they bat in 2024. The baseline showed
+  the same pattern: a model trained on the old regime is miscalibrated on the new one.
+- **The pooled "other" rating.** It stands in for players with fewer than 60 balls, and those players
+  may differ systematically from the modelled ones.
+
+### What would test this
+
+- A longer run that passes the gate.
+- Splitting the test score by whether the batter is modelled or "other".
+- Training only on 2023 onwards, or giving player effects a time trend.
+
+None of this has been done. Until then the honest summary is **"inconclusive, and not encouraging"**.
+Team and player strength remains the likely lever for the first innings, but this run gives no evidence
+that this model delivers it.
 
 ## AI workflow log
 
@@ -468,9 +606,24 @@ Keep this honest. Record where an AI agent helped and where it was wrong.
   files (identical, max difference 0) and corrected the record. (2) The first all-league run printed
   `nan` and a crash, and the cause was a model that let NaN pass silently, not only a data gap. The
   data fix alone would have left that defect in place; both were fixed and tested.
-- 2026-11-10 (more leagues, result): the pre-registered hypothesis printed "SUPPORTED" with a lower bound of
-  +0.00009. Before accepting it I re-ran the bootstrap with other seeds and more draws, found the verdict
+- 2026-11-10 (more leagues, result): the hypothesis fixed before the run printed "SUPPORTED" with a lower bound of
+  +0.00009 (+0.00010 after the parser fixes). Before accepting it I re-ran the bootstrap with other seeds and more draws, found the verdict
   flips with the seed, and downgraded it to "not reliably confirmed". The protocol gap (no fixed seeds or
   draws for the one confirmatory comparison) was mine and is now closed in the code. I also noted that the
   largest fresh league shows no effect and three small ones go the wrong way, so the average hides mixed
   results.
+- 2026-11-10 (testing round): the pipeline I had called verified had three data bugs, none caught by my
+  own example tests or by the fresh-clone reproduction, because all of those checked that the code
+  reproduces itself. What found them was an independent oracle (the margins Cricsheet records). Two of my
+  earlier statements were wrong: I wrote that the four "target is not first innings + 1" matches "look
+  like rain revisions or penalty runs" without checking, and it was penalty runs. Process slips this
+  round: my first mutation script crashed on a path error and left one source file modified (only line
+  endings, caught by `git status` and restored with git); my first run of the new regression tests hung
+  because the unfixed command line accepted `--draws 0` and began a real model fit, and I stopped it
+  with a process-name match that also ended three shell wrapper processes (no data or code was lost).
+  I added Hypothesis to the `dev` extra because the testing skill I was asked to use needs it; it is
+  easy to drop if you would rather not carry it.
+- 2026-11-11 (player model): I suggested `--draws 200 --tune 200 --chains 2` to keep the laptop run
+  short, without checking it against the model's own gate (bulk ESS at least 400). With only 400 draws
+  in total, the run could hardly have passed. The run still gave a usable informal reading, but 6.7 hours
+  went into a result that cannot be counted under the rule we set in advance.

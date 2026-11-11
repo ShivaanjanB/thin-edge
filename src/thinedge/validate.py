@@ -62,6 +62,31 @@ def quality_report(matches: pd.DataFrame, innings: pd.DataFrame, balls: pd.DataF
     # target may hide a rain revision), so modelling excludes them rather than guessing.
     checks["decided_chase_without_target"] = _check(len(no_target), "warn", no_target["match_id"])
 
+    too_many = main[main["wickets_lost"] > 10]
+    checks["more_than_ten_wickets"] = _check(len(too_many), "error", too_many["match_id"].unique())
+
+    # Cross-check the parsed scores against the margin Cricsheet records ("won by 24 runs"). This is
+    # how the unhandled penalty runs and double wickets were found. Rain-affected results are skipped:
+    # a revised target breaks the arithmetic.
+    wins = matches[(matches["result"] == "win") & matches["method"].isna()]
+    by_innings = {
+        n: main[main["innings_no"] == n].set_index("match_id")[["batting_team", "total_runs", "wickets_lost"]]
+        for n in (1, 2)
+    }
+    margin = pd.to_numeric(wins["win_by_wickets"], errors="coerce")
+    w = wins[margin.notna()].assign(margin=margin.dropna())
+    chase = by_innings[2].reindex(w["match_id"])
+    chasing_won = (chase["batting_team"].to_numpy() == w["winner"].to_numpy()) & chase["wickets_lost"].notna().to_numpy()
+    bad_w = w[chasing_won & (chase["wickets_lost"].to_numpy() != 10 - w["margin"].to_numpy())]
+    checks["win_by_wickets_mismatch"] = _check(len(bad_w), "warn", bad_w["match_id"])
+
+    margin = pd.to_numeric(wins["win_by_runs"], errors="coerce")
+    r = wins[margin.notna()].assign(margin=margin.dropna())
+    one, two = by_innings[1].reindex(r["match_id"]), by_innings[2].reindex(r["match_id"])
+    batted_first = (one["batting_team"].to_numpy() == r["winner"].to_numpy()) & two["total_runs"].notna().to_numpy()
+    bad_r = r[batted_first & (one["total_runs"].to_numpy() - two["total_runs"].to_numpy() != r["margin"].to_numpy())]
+    checks["win_by_runs_mismatch"] = _check(len(bad_r), "warn", bad_r["match_id"])
+
     checks["matches_missing_venue"] = _check(matches["venue"].isna().sum(), "warn")
     checks["matches_missing_city"] = _check(matches["city"].isna().sum(), "warn")
 

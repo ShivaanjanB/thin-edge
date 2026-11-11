@@ -52,7 +52,10 @@ def build_state_table(
     b = balls.sort_values(["match_id", "innings_no", "delivery_seq"]).reset_index(drop=True)
     b = b.merge(
         innings[
-            ["match_id", "innings_no", "bowling_team", "target_runs", "max_balls", "has_miscounted_overs"]
+            [
+                "match_id", "innings_no", "bowling_team", "target_runs", "max_balls",
+                "has_miscounted_overs", "penalty_runs_pre",
+            ]
         ],
         on=["match_id", "innings_no"],
         how="left",
@@ -65,11 +68,12 @@ def build_state_table(
     )
 
     g = b.groupby(["match_id", "innings_no"], sort=False)
-    b["score_post"] = g["runs_total"].cumsum()
-    b["wickets_post"] = g["is_wicket"].transform(lambda s: s.astype(int).cumsum())
+    # Penalty runs awarded before an innings start it above zero (the chase target already counts them).
+    b["score_post"] = b["penalty_runs_pre"] + g["runs_total"].cumsum()
+    b["wickets_post"] = g["n_wickets"].cumsum()
     b["legal_balls_post"] = g["is_legal"].transform(lambda s: s.astype(int).cumsum())
     b["score_pre"] = b["score_post"] - b["runs_total"]
-    b["wickets_pre"] = b["wickets_post"] - b["is_wicket"].astype(int)
+    b["wickets_pre"] = b["wickets_post"] - b["n_wickets"]
     b["legal_balls_pre"] = b["legal_balls_post"] - b["is_legal"].astype(int)
 
     b["balls_remaining_pre"] = (b["max_balls"] - b["legal_balls_pre"]).clip(lower=0)

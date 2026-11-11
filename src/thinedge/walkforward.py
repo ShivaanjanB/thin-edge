@@ -17,7 +17,7 @@ Four arms are scored on exactly the same test rows:
 The first test year is identical for ``fixed``, ``par_refresh`` and ``full_retrain`` by construction
 (same history), which is checked and reported.
 
-Cause test (pre-registered before the real data was run)
+Cause test (written here before the real data was run; there is no outside timestamp to prove it)
     The explanation counts as supported only if, for IPL matches in test years after the first,
     ``par_oracle`` cuts the first-innings gap (mean prediction minus observed win rate) by at least
     ``MIN_GAP_REDUCTION`` AND its Brier gain over ``fixed`` has a 95% match-level interval above zero.
@@ -101,8 +101,12 @@ def analyse(
     n_boot: int = 1000,
     use_regime: bool = True,
 ) -> dict:
-    test, preds = arm_predictions(df, impact, first_test_year, use_regime)
     start = pd.Timestamp(year=first_test_year, month=1, day=1)
+    if not (df["date"] < start).any():
+        raise ValueError(f"no matches before {start.date()} to train on; choose a later first test year")
+    if not (df["date"] >= start).any():
+        raise ValueError(f"no matches from {start.date()} to test on; choose an earlier first test year")
+    test, preds = arm_predictions(df, impact, first_test_year, use_regime)
     ref = test["innings_no"].map(df[df["date"] < start].groupby("innings_no")["y"].mean())
     year = test["date"].dt.year
     masks = {
